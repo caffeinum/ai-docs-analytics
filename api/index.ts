@@ -90,7 +90,12 @@ function classify(userAgent: string, acceptHeader: string, host: string): Classi
   if (ua.includes("chatgpt-user")) {
     return { category: "coding-agent", agent: "codex", filtered: false };
   }
-  if (accept.includes("text/plain") && accept.includes("text/markdown") && accept.includes("q=")) {
+  // Claude Code webfetch: axios + text/markdown (no q= weights)
+  if (ua.includes("axios") && wantsMarkdown && !accept.includes("q=")) {
+    return { category: "coding-agent", agent: "claude-code", filtered: false };
+  }
+  // OpenCode: text/plain + text/markdown with q= weights
+  if (accept.includes("text/plain") && wantsMarkdown && accept.includes("q=")) {
     return { category: "coding-agent", agent: "opencode", filtered: false };
   }
   if (ua.includes("claude/1.0") || (ua.includes("claude") && ua.includes("compatible"))) {
