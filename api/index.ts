@@ -42,12 +42,9 @@ app.post("/track", async (c) => {
     ts: body.ts || new Date().toISOString().slice(0, 19).replace("T", " "),
     host: body.host || "unknown",
     path: body.path || "/",
-    accept: accept.slice(0, 500),
-    ua: userAgent.slice(0, 500),
-    country: body.country || "unknown",
-    city: body.city || "unknown",
     agent_type: agentType,
     is_ai: isAI ? 1 : 0,
+    ua: isAI ? userAgent.slice(0, 500) : "",
   };
 
   const datasource = c.env.TINYBIRD_DATASOURCE || "ai_agent_events";
