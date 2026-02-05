@@ -1,3 +1,7 @@
 name = "ai-docs-analytics-api"
 main = "index.ts"
 compatibility_date = "2024-01-01"
+
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "ai_docs_visits"

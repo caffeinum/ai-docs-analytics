@@ -1,8 +1,18 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
+interface AnalyticsEngineDataset {
+  writeDataPoint(data: {
+    blobs?: string[];
+    doubles?: number[];
+    indexes?: string[];
+  }): void;
+}
+
 type Env = {
-  POSTHOG_API_KEY: string;
+  ANALYTICS: AnalyticsEngineDataset;
+  CF_ACCOUNT_ID?: string;
+  CF_API_TOKEN?: string;
 };
 
 const app = new Hono<{ Bindings: Env }>();
@@ -46,6 +56,13 @@ function detectIsAI(accept: string): boolean {
   return wantsMarkdown || wantsPlainText;
 }
 
+function isPageView(accept: string): boolean {
+  const wantsHtml = accept.includes("text/html");
+  const wantsMarkdown = accept.includes("text/markdown");
+  const wantsPlainText = accept.includes("text/plain");
+  return wantsHtml || wantsMarkdown || wantsPlainText;
+}
+
 function detectAgentType(userAgent: string, isAI: boolean): string {
   if (!isAI) return "human";
   const ua = userAgent.toLowerCase();
@@ -69,6 +86,11 @@ app.post("/track", async (c) => {
   const agentType = body.agent_type || detectAgentType(userAgent, isAI);
   const host = body.host || "unknown";
   const path = body.path || "/";
+  const country = body.country || "unknown";
+
+  if (!isPageView(accept)) {
+    return c.json({ ok: true, filtered: "not-page-view" });
+  }
 
   if (!isAI && isBot(userAgent)) {
     return c.json({ ok: true, filtered: "bot" });
@@ -78,37 +100,49 @@ app.post("/track", async (c) => {
     return c.json({ ok: true, filtered: "preview" });
   }
 
-  const distinctId = isAI ? `${host}:${agentType}` : `${host}:human`;
-
-  const event = {
-    api_key: c.env.POSTHOG_API_KEY,
-    event: isAI ? "ai_docs_visit" : "docs_visit",
-    distinct_id: distinctId,
-    timestamp: new Date().toISOString(),
-    properties: {
-      host,
-      path,
-      agent_type: agentType,
-      is_ai: isAI,
-      country: body.country || "unknown",
-      user_agent: isAI ? userAgent.slice(0, 500) : "",
-    },
-  };
-
-  const response = await fetch("https://us.i.posthog.com/i/v0/e/", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(event),
+  c.env.ANALYTICS.writeDataPoint({
+    blobs: [host, path, agentType, country, isAI ? userAgent.slice(0, 500) : ""],
+    doubles: [isAI ? 1 : 0],
+    indexes: [host],
   });
 
-  if (!response.ok) {
-    console.error("posthog error:", await response.text());
-    return c.json({ error: "failed to track" }, 500);
+  return c.json({ ok: true });
+});
+
+app.get("/query", async (c) => {
+  const accountId = c.env.CF_ACCOUNT_ID;
+  const apiToken = c.env.CF_API_TOKEN;
+  
+  if (!accountId || !apiToken) {
+    return c.json({ error: "missing CF_ACCOUNT_ID or CF_API_TOKEN" }, 500);
   }
 
-  return c.json({ ok: true });
+  const sql = c.req.query("sql") || `
+    SELECT 
+      blob1 as host,
+      blob3 as agent_type,
+      SUM(_sample_interval) as visits
+    FROM ai_docs_visits
+    WHERE timestamp > NOW() - INTERVAL '7' DAY
+    GROUP BY host, agent_type
+    ORDER BY visits DESC
+    LIMIT 100
+  `;
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/analytics_engine/sql`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        "Content-Type": "text/plain",
+      },
+      body: sql,
+    }
+  );
+
+  const data = await response.json();
+  return c.json(data);
 });
 
 app.get("/health", (c) => c.json({ ok: true }));
