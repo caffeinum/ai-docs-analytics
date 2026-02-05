@@ -10,7 +10,8 @@ interface AnalyticsEngineDataset {
 }
 
 type Env = {
-  ANALYTICS: AnalyticsEngineDataset;
+  RAW_EVENTS: AnalyticsEngineDataset;
+  VISITS: AnalyticsEngineDataset;
   CF_ACCOUNT_ID?: string;
   CF_API_TOKEN?: string;
 };
@@ -19,32 +20,30 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.use("/*", cors());
 
-// Schema:
+// RAW_EVENTS schema (immutable):
 // blob1: host
 // blob2: path
-// blob3: visitor_category ("bot" | "browsing-agent" | "coding-agent" | "human")
-// blob4: agent_name (specific agent: "claude-code" | "codex" | "opencode" | "unknown-coding-agent" | "chatgpt-user" | "googlebot" | "browser" | etc)
+// blob3: user_agent
+// blob4: accept_header
 // blob5: country
-// blob6: user_agent (raw, for re-analysis)
-// blob7: accept_header (raw, for re-analysis)
-// double1: (unused)
-// double2: is_filtered (1 for bots + browsing-agents, excluded from main stats)
+// index1: host
+
+// VISITS schema (processed):
+// blob1: host
+// blob2: path
+// blob3: category
+// blob4: agent
+// blob5: country
+// double1: is_filtered
 // index1: host
 
 const BOT_PATTERNS = [
-  // search engines
   "googlebot", "bingbot", "yandexbot", "baiduspider", "duckduckbot", "slurp",
-  // social
   "facebookexternalhit", "linkedinbot", "twitterbot",
-  // seo
   "applebot", "semrushbot", "ahrefsbot", "mj12bot", "dotbot", "petalbot", "bytespider",
-  // ai crawlers (training/indexing, NOT browsing agents)
   "gptbot", "claudebot", "anthropic-ai", "ccbot", "cohere-ai", "perplexitybot",
-  // monitoring
   "pingdom", "uptimerobot", "statuscake", "site24x7", "newrelic", "datadog", "checkly", "freshping",
-  // infra
   "vercel-healthcheck", "vercel-edge-functions",
-  // generic http clients
   "wget", "curl", "httpie", "python-requests", "go-http-client",
   "scrapy", "httpclient", "java/", "okhttp", "axios", "node-fetch", "undici",
 ];
@@ -57,7 +56,6 @@ const PREVIEW_HOST_PATTERNS = [
   "127.0.0.1",
 ];
 
-// Visitor categories
 type VisitorCategory = "bot" | "browsing-agent" | "coding-agent" | "human";
 
 interface Classification {
@@ -67,7 +65,6 @@ interface Classification {
 }
 
 function detectBotName(ua: string): string {
-  // return first matching bot pattern as the agent name
   for (const pattern of BOT_PATTERNS) {
     if (ua.includes(pattern)) {
       return pattern;
@@ -81,7 +78,6 @@ function classify(userAgent: string, acceptHeader: string, host: string): Classi
   const accept = acceptHeader.toLowerCase();
   const wantsMarkdown = accept.includes("text/markdown");
 
-  // 1. Explicit coding agents (by user-agent)
   if (ua.includes("claude-code") || ua.includes("claudecode")) {
     return { category: "coding-agent", agent: "claude-code", filtered: false };
   }
@@ -91,41 +87,27 @@ function classify(userAgent: string, acceptHeader: string, host: string): Classi
   if (ua.includes("opencode")) {
     return { category: "coding-agent", agent: "opencode", filtered: false };
   }
-
-  // 2. Codex web browsing (uses ChatGPT-User under the hood)
   if (ua.includes("chatgpt-user")) {
     return { category: "coding-agent", agent: "codex", filtered: false };
   }
-
-  // 3. OpenCode detection (specific Accept header pattern)
   if (accept.includes("text/plain") && accept.includes("text/markdown") && accept.includes("q=")) {
     return { category: "coding-agent", agent: "opencode", filtered: false };
   }
-
-  // 4. Browsing agents (by user-agent)
   if (ua.includes("claude/1.0") || (ua.includes("claude") && ua.includes("compatible"))) {
     return { category: "browsing-agent", agent: "claude-computer-use", filtered: true };
   }
   if (ua.includes("perplexity-user")) {
     return { category: "browsing-agent", agent: "perplexity-comet", filtered: true };
   }
-
-  // 5. Accept: text/markdown = coding agent (catches axios, node-fetch used by coding tools)
   if (wantsMarkdown) {
     return { category: "coding-agent", agent: "unknown-coding-agent", filtered: false };
   }
-
-  // 4. Bots/crawlers (only if NOT requesting markdown)
   if (BOT_PATTERNS.some(pattern => ua.includes(pattern))) {
     return { category: "bot", agent: detectBotName(ua), filtered: true };
   }
-
-  // 5. Filter preview hosts
   if (PREVIEW_HOST_PATTERNS.some(pattern => host.toLowerCase().includes(pattern))) {
     return { category: "human", agent: "browser", filtered: true };
   }
-
-  // 6. Human
   return { category: "human", agent: "browser", filtered: false };
 }
 
@@ -143,31 +125,22 @@ app.post("/track", async (c) => {
   const path = body.path || "/";
   const country = body.country || "unknown";
 
-  // Skip non-page-view requests entirely
   if (!isPageView(accept)) {
     return c.json({ ok: true, skipped: "not-page-view" });
   }
 
   const { category, agent, filtered } = classify(userAgent, accept, host);
 
-  // blob1: host
-  // blob2: path
-  // blob3: visitor_category
-  // blob4: agent_name
-  // blob5: country
-  // blob6: user_agent (raw)
-  // blob7: accept_header (raw)
-  c.env.ANALYTICS.writeDataPoint({
-    blobs: [
-      host,
-      path,
-      category,
-      agent,
-      country,
-      userAgent.slice(0, 500),
-      accept.slice(0, 500),
-    ],
-    doubles: [0, filtered ? 1 : 0],
+  // RAW_EVENTS: immutable capture
+  c.env.RAW_EVENTS.writeDataPoint({
+    blobs: [host, path, userAgent.slice(0, 500), accept.slice(0, 500), country],
+    indexes: [host],
+  });
+
+  // VISITS: processed classification
+  c.env.VISITS.writeDataPoint({
+    blobs: [host, path, category, agent, country],
+    doubles: [filtered ? 1 : 0],
     indexes: [host],
   });
 
@@ -190,62 +163,54 @@ app.get("/detect", (c) => {
 });
 
 const ALLOWED_QUERIES: Record<string, string> = {
-  // Default: visits by host and category (excluding filtered)
   default: `
     SELECT blob1 as host, blob3 as category, blob4 as agent, SUM(_sample_interval) as visits
     FROM ai_docs_visits
-    WHERE timestamp > NOW() - INTERVAL '7' DAY AND double2 = 0
+    WHERE timestamp > NOW() - INTERVAL '7' DAY AND double1 = 0
     GROUP BY host, category, agent
     ORDER BY visits DESC
     LIMIT 100
   `,
-  // Sites: visits by host split by category
   sites: `
     SELECT blob1 as host, blob3 as category, SUM(_sample_interval) as visits
     FROM ai_docs_visits
-    WHERE timestamp > NOW() - INTERVAL '7' DAY AND double2 = 0
+    WHERE timestamp > NOW() - INTERVAL '7' DAY AND double1 = 0
     GROUP BY host, category
     ORDER BY visits DESC
   `,
-  // Agents: coding agent breakdown
   agents: `
     SELECT blob4 as agent, SUM(_sample_interval) as visits
     FROM ai_docs_visits
-    WHERE timestamp > NOW() - INTERVAL '7' DAY AND double2 = 0 AND blob3 = 'coding-agent'
+    WHERE timestamp > NOW() - INTERVAL '7' DAY AND double1 = 0 AND blob3 = 'coding-agent'
     GROUP BY agent
     ORDER BY visits DESC
   `,
-  // All agents: all visitor types including humans
   "all-agents": `
     SELECT blob3 as category, blob4 as agent, SUM(_sample_interval) as visits
     FROM ai_docs_visits
-    WHERE timestamp > NOW() - INTERVAL '7' DAY AND double2 = 0
+    WHERE timestamp > NOW() - INTERVAL '7' DAY AND double1 = 0
     GROUP BY category, agent
     ORDER BY visits DESC
   `,
-  // Pages: top pages visited by coding agents
   pages: `
     SELECT blob1 as host, blob2 as path, blob4 as agent, SUM(_sample_interval) as visits
     FROM ai_docs_visits
-    WHERE timestamp > NOW() - INTERVAL '7' DAY AND blob3 = 'coding-agent' AND double2 = 0
+    WHERE timestamp > NOW() - INTERVAL '7' DAY AND blob3 = 'coding-agent' AND double1 = 0
     GROUP BY host, path, agent
     ORDER BY visits DESC
     LIMIT 50
   `,
-  // Feed: recent visits
   feed: `
     SELECT timestamp, blob1 as host, blob2 as path, blob3 as category, blob4 as agent
     FROM ai_docs_visits
-    WHERE timestamp > NOW() - INTERVAL '1' DAY AND double2 = 0
+    WHERE timestamp > NOW() - INTERVAL '1' DAY AND double1 = 0
     ORDER BY timestamp DESC
     LIMIT 50
   `,
-  // Raw: see everything including filtered (for debugging)
   raw: `
-    SELECT timestamp, blob1 as host, blob3 as category, blob4 as agent, double2 as filtered, SUM(_sample_interval) as count
-    FROM ai_docs_visits
+    SELECT timestamp, blob1 as host, blob2 as path, blob3 as user_agent, blob4 as accept_header
+    FROM ai_docs_raw_events
     WHERE timestamp > NOW() - INTERVAL '1' DAY
-    GROUP BY timestamp, host, category, agent, filtered
     ORDER BY timestamp DESC
     LIMIT 100
   `,
