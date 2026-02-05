@@ -1,0 +1,11 @@
+name = "ai-docs-analytics-api"
+main = "index.ts"
+compatibility_date = "2024-01-01"
+
+[[analytics_engine_datasets]]
+binding = "RAW_EVENTS"
+dataset = "ai_docs_raw_events"
+
+[[analytics_engine_datasets]]
+binding = "VISITS"
+dataset = "ai_docs_visits"

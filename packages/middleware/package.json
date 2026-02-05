@@ -1,0 +1,58 @@
+{
+  "name": "2027-track",
+  "version": "0.1.2",
+  "description": "Track AI coding agents visiting your documentation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/caffeinum/ai-docs-analytics"
+  },
+  "homepage": "https://github.com/caffeinum/ai-docs-analytics#readme",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "import": "./dist/next.mjs",
+      "require": "./dist/next.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts src/next.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts src/next.ts --format cjs,esm --dts --watch"
+  },
+  "keywords": [
+    "ai",
+    "analytics",
+    "middleware",
+    "nextjs",
+    "vercel",
+    "claude",
+    "codex",
+    "opencode"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.2.1",
+    "next": "^14.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "next": ">=13.0.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
+  }
+}

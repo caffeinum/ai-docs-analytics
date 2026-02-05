@@ -1,0 +1,14 @@
+{
+  "name": "ai-docs-analytics-api",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
