@@ -98,7 +98,7 @@ app.post("/track", async (c) => {
   }
 
   c.env.ANALYTICS.writeDataPoint({
-    blobs: [host, path, agentType, country, userAgent.slice(0, 500), filterReason],
+    blobs: [host, path, agentType, country, userAgent.slice(0, 500), accept.slice(0, 500), filterReason],
     doubles: [isAI ? 1 : 0, filterReason ? 1 : 0],
     indexes: [host],
   });
