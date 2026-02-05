@@ -55,10 +55,6 @@ This middleware collects no personally identifiable information (PII). Because t
 
 ## Detection
 
-| Agent | Signal |
-|-------|--------|
-| Claude Code | `axios` user-agent + `text/markdown` accept |
-| OpenCode | `text/markdown` accept with `q=` weights |
-| Codex | `ChatGPT-User` user-agent |
+Agent classification (user-agent and accept header matching) happens server-side at the analytics endpoint — the middleware only forwards raw headers.
 
 Dashboard: https://ai-docs-analytics.vercel.app
