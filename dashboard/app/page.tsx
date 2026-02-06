@@ -90,8 +90,16 @@ export default function Dashboard() {
   );
 
   useEffect(() => {
+    if (!user) {
+      setAllSites([]);
+      setSites([]);
+      setAgents([]);
+      setPages([]);
+      setFeed([]);
+      setLoading(true);
+      return;
+    }
     if (user === undefined || allowedHosts === undefined) return;
-    if (!user) return;
 
     async function init() {
       const sitesResult = await queryAnalytics({ queryName: "sites" });
@@ -135,11 +143,11 @@ export default function Dashboard() {
   }, [user, allowedHosts, queryAnalytics]);
 
   useEffect(() => {
-    if (allSites.length === 0) return;
+    if (!user || allSites.length === 0) return;
     loadData(selectedHost);
     const interval = setInterval(() => loadData(selectedHost), 10000);
     return () => clearInterval(interval);
-  }, [selectedHost, allSites, loadData]);
+  }, [user, selectedHost, allSites, loadData]);
 
   if (user === undefined) {
     return (
