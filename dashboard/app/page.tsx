@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api";
 import { SignIn } from "./SignIn";
@@ -16,10 +16,6 @@ import {
   Pie,
   Cell,
 } from "recharts";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://ai-docs-analytics-api.theisease.workers.dev";
 
 interface SiteData {
   host: string;
@@ -49,29 +45,18 @@ interface FeedItem {
 }
 
 const COLORS = [
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-  "#f59e0b",
-  "#10b981",
-  "#6366f1",
+  "#f5f0e8",
+  "#a8a49c",
+  "#d4cfc5",
+  "#8a857d",
+  "#c7c1b6",
+  "#6d6962",
 ];
-
-async function queryAnalytics<T>(
-  queryName: string,
-  host?: string
-): Promise<T[]> {
-  const url = new URL(`${API_URL}/query`);
-  url.searchParams.set("q", queryName);
-  if (host) url.searchParams.set("host", host);
-  const res = await fetch(url.toString());
-  const json = await res.json();
-  return json.data || [];
-}
 
 export default function Dashboard() {
   const user = useQuery(api.users.currentUser);
   const allowedHosts = useQuery(api.users.getAllowedHosts);
+  const queryAnalytics = useAction(api.analytics.query);
   const { signOut } = useAuthActions();
 
   const [allSites, setAllSites] = useState<SiteData[]>([]);
@@ -84,11 +69,14 @@ export default function Dashboard() {
 
   const loadData = useCallback(
     async (host: string) => {
-      const [agentsData, pagesData, feedData] = await Promise.all([
-        queryAnalytics<AgentData>("agents", host || undefined),
-        queryAnalytics<PageData>("pages", host || undefined),
-        queryAnalytics<FeedItem>("feed", host || undefined),
+      const [agentsResult, pagesResult, feedResult] = await Promise.all([
+        queryAnalytics({ queryName: "agents", host: host || undefined }),
+        queryAnalytics({ queryName: "pages", host: host || undefined }),
+        queryAnalytics({ queryName: "feed", host: host || undefined }),
       ]);
+      const agentsData = (agentsResult?.data ?? []) as AgentData[];
+      const pagesData = (pagesResult?.data ?? []) as PageData[];
+      const feedData = (feedResult?.data ?? []) as FeedItem[];
       setAgents(agentsData);
       setPages(pagesData);
       setFeed(feedData);
@@ -98,7 +86,7 @@ export default function Dashboard() {
         setSites(allSites);
       }
     },
-    [allSites]
+    [allSites, queryAnalytics]
   );
 
   useEffect(() => {
@@ -106,11 +94,12 @@ export default function Dashboard() {
     if (!user) return;
 
     async function init() {
-      const sitesData = await queryAnalytics<{
+      const sitesResult = await queryAnalytics({ queryName: "sites" });
+      const sitesData = (sitesResult?.data ?? []) as {
         host: string;
         category: string;
         visits: string;
-      }>("sites");
+      }[];
 
       const siteMap = new Map<string, { ai: number; human: number }>();
       for (const row of sitesData) {
@@ -143,7 +132,7 @@ export default function Dashboard() {
       setLoading(false);
     }
     init();
-  }, [user, allowedHosts]);
+  }, [user, allowedHosts, queryAnalytics]);
 
   useEffect(() => {
     if (allSites.length === 0) return;
@@ -155,7 +144,7 @@ export default function Dashboard() {
   if (user === undefined) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-zinc-400">loading...</div>
+        <div style={{ color: 'var(--cream-dim)' }}>loading...</div>
       </div>
     );
   }
@@ -167,7 +156,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-zinc-400">loading analytics...</div>
+        <div style={{ color: 'var(--cream-dim)' }}>loading analytics...</div>
       </div>
     );
   }
@@ -178,12 +167,14 @@ export default function Dashboard() {
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">AI Docs Analytics</h1>
+        <h1 className="text-3xl font-medium" style={{ color: 'var(--cream)' }}>
+          AI Docs Analytics
+        </h1>
         <div className="flex items-center gap-4">
           <select
             value={selectedHost}
             onChange={(e) => setSelectedHost(e.target.value)}
-            className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="select-2027 rounded-lg px-4 py-2"
           >
             <option value="">All Sites</option>
             {allSites.map((s) => (
@@ -192,12 +183,13 @@ export default function Dashboard() {
               </option>
             ))}
           </select>
-          <div className="flex items-center gap-2 text-sm text-zinc-400">
-            <span>{user.email}</span>
+          <div className="flex items-center gap-3 text-sm">
+            <span style={{ color: 'var(--cream-dim)' }}>{user.email}</span>
             <button
               type="button"
               onClick={() => signOut()}
-              className="text-zinc-500 hover:text-zinc-300"
+              className="hover:opacity-80 transition-opacity"
+              style={{ color: 'var(--cream-dark)' }}
             >
               sign out
             </button>
@@ -206,23 +198,27 @@ export default function Dashboard() {
       </div>
 
       {allowedHosts && allowedHosts.length > 0 && (
-        <div className="mb-4 text-sm text-zinc-500">
+        <div className="mb-4 text-sm" style={{ color: 'var(--cream-dark)' }}>
           showing data for: {allowedHosts.join(", ")}
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-zinc-900 rounded-lg p-6">
-          <div className="text-zinc-400 text-sm">Total AI Visits</div>
-          <div className="text-4xl font-bold text-blue-500">{totalAI}</div>
+        <div className="card-2027 rounded-lg p-6">
+          <div className="label-style mb-2">Total AI Visits</div>
+          <div className="text-4xl font-medium" style={{ color: 'var(--cream)' }}>
+            {totalAI.toLocaleString()}
+          </div>
         </div>
-        <div className="bg-zinc-900 rounded-lg p-6">
-          <div className="text-zinc-400 text-sm">Total Human Visits</div>
-          <div className="text-4xl font-bold text-zinc-300">{totalHuman}</div>
+        <div className="card-2027 rounded-lg p-6">
+          <div className="label-style mb-2">Total Human Visits</div>
+          <div className="text-4xl font-medium" style={{ color: 'var(--cream-dim)' }}>
+            {totalHuman.toLocaleString()}
+          </div>
         </div>
-        <div className="bg-zinc-900 rounded-lg p-6">
-          <div className="text-zinc-400 text-sm">AI Percentage</div>
-          <div className="text-4xl font-bold text-purple-500">
+        <div className="card-2027 rounded-lg p-6">
+          <div className="label-style mb-2">AI Percentage</div>
+          <div className="text-4xl font-medium" style={{ color: 'var(--cream)' }}>
             {totalAI + totalHuman > 0
               ? Math.round((totalAI / (totalAI + totalHuman)) * 100)
               : 0}
@@ -232,23 +228,42 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <div className="bg-zinc-900 rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Visits by Site</h2>
+        <div className="card-2027 rounded-lg p-6">
+          <h2 className="text-xl font-medium mb-4" style={{ color: 'var(--cream)' }}>
+            Visits by Site
+          </h2>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={sites}>
-              <XAxis dataKey="host" tick={{ fill: "#a1a1aa", fontSize: 12 }} />
-              <YAxis tick={{ fill: "#a1a1aa" }} />
-              <Tooltip
-                contentStyle={{ background: "#18181b", border: "none" }}
+              <XAxis 
+                dataKey="host" 
+                tick={{ fill: '#a8a49c', fontSize: 12 }} 
+                axisLine={{ stroke: '#3d3b37' }}
+                tickLine={{ stroke: '#3d3b37' }}
               />
-              <Bar dataKey="ai_visits" fill="#3b82f6" name="AI" />
-              <Bar dataKey="human_visits" fill="#71717a" name="Human" />
+              <YAxis 
+                tick={{ fill: '#a8a49c' }} 
+                axisLine={{ stroke: '#3d3b37' }}
+                tickLine={{ stroke: '#3d3b37' }}
+              />
+              <Tooltip
+                contentStyle={{ 
+                  background: '#0a0a09', 
+                  border: '1px solid #3d3b37',
+                  borderRadius: '8px',
+                  color: '#f5f0e8'
+                }}
+                labelStyle={{ color: '#f5f0e8' }}
+              />
+              <Bar dataKey="ai_visits" fill="#f5f0e8" name="AI" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="human_visits" fill="#3d3b37" name="Human" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-zinc-900 rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Agent Breakdown</h2>
+        <div className="card-2027 rounded-lg p-6">
+          <h2 className="text-xl font-medium mb-4" style={{ color: 'var(--cream)' }}>
+            Agent Breakdown
+          </h2>
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
               <Pie
@@ -259,13 +274,19 @@ export default function Dashboard() {
                 cy="50%"
                 outerRadius={80}
                 label={({ agent }) => agent}
+                labelLine={{ stroke: '#a8a49c' }}
               >
                 {agents.map((a, i) => (
                   <Cell key={a.agent} fill={COLORS[i % COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip
-                contentStyle={{ background: "#18181b", border: "none" }}
+                contentStyle={{ 
+                  background: '#0a0a09', 
+                  border: '1px solid #3d3b37',
+                  borderRadius: '8px',
+                  color: '#f5f0e8'
+                }}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -273,36 +294,63 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-zinc-900 rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Top Pages</h2>
+        <div className="card-2027 rounded-lg p-6">
+          <h2 className="text-xl font-medium mb-4" style={{ color: 'var(--cream)' }}>
+            Top Pages
+          </h2>
           <div className="space-y-2">
             {pages.map((p) => (
               <div
                 key={`${p.host}${p.path}`}
-                className="flex justify-between items-center py-2 border-b border-zinc-800"
+                className="flex justify-between items-center py-2"
+                style={{ borderBottom: '1px solid var(--cream-dark)' }}
               >
-                <span className="text-zinc-300 truncate max-w-xs">{p.path}</span>
-                <span className="text-blue-500 font-mono">{p.visits}</span>
+                <span 
+                  className="truncate max-w-xs" 
+                  style={{ color: 'var(--cream-dim)' }}
+                >
+                  {p.path}
+                </span>
+                <span 
+                  className="font-mono" 
+                  style={{ color: 'var(--cream)' }}
+                >
+                  {p.visits}
+                </span>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-zinc-900 rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Realtime Feed</h2>
+        <div className="card-2027 rounded-lg p-6">
+          <h2 className="text-xl font-medium mb-4" style={{ color: 'var(--cream)' }}>
+            Realtime Feed
+          </h2>
           <div className="space-y-2 max-h-80 overflow-y-auto">
             {feed.map((f) => (
               <div
                 key={`${f.timestamp}${f.path}`}
-                className="flex justify-between items-center py-2 border-b border-zinc-800 text-sm"
+                className="flex justify-between items-center py-2 text-sm"
+                style={{ borderBottom: '1px solid var(--cream-dark)' }}
               >
                 <div>
-                  <span className="text-purple-400 font-mono mr-2">
+                  <span 
+                    className="font-mono mr-2" 
+                    style={{ color: 'var(--cream)' }}
+                  >
                     {f.agent}
                   </span>
-                  <span className="text-zinc-400 truncate">{f.path}</span>
+                  <span 
+                    className="truncate" 
+                    style={{ color: 'var(--cream-dim)' }}
+                  >
+                    {f.path}
+                  </span>
                 </div>
-                <span className="text-zinc-500 text-xs">
+                <span 
+                  className="text-xs" 
+                  style={{ color: 'var(--cream-dark)' }}
+                >
                   {new Date(f.timestamp).toLocaleTimeString()}
                 </span>
               </div>
