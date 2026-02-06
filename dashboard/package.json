@@ -7,6 +7,9 @@
     "start": "next start -p 3001"
   },
   "dependencies": {
+    "@auth/core": "^0.37.4",
+    "@convex-dev/auth": "^0.0.90",
+    "convex": "^1.31.7",
     "next": "^14.0.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",

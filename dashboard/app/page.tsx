@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useQuery } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { api } from "../convex/_generated/api";
+import { SignIn } from "./SignIn";
 import {
   BarChart,
   Bar,
@@ -13,7 +17,9 @@ import {
   Cell,
 } from "recharts";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://ai-docs-analytics-api.theisease.workers.dev";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://ai-docs-analytics-api.theisease.workers.dev";
 
 interface SiteData {
   host: string;
@@ -42,9 +48,19 @@ interface FeedItem {
   agent: string;
 }
 
-const COLORS = ["#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#6366f1"];
+const COLORS = [
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
+  "#f59e0b",
+  "#10b981",
+  "#6366f1",
+];
 
-async function queryAnalytics<T>(queryName: string, host?: string): Promise<T[]> {
+async function queryAnalytics<T>(
+  queryName: string,
+  host?: string
+): Promise<T[]> {
   const url = new URL(`${API_URL}/query`);
   url.searchParams.set("q", queryName);
   if (host) url.searchParams.set("host", host);
@@ -54,6 +70,10 @@ async function queryAnalytics<T>(queryName: string, host?: string): Promise<T[]>
 }
 
 export default function Dashboard() {
+  const user = useQuery(api.users.currentUser);
+  const allowedHosts = useQuery(api.users.getAllowedHosts);
+  const { signOut } = useAuthActions();
+
   const [allSites, setAllSites] = useState<SiteData[]>([]);
   const [selectedHost, setSelectedHost] = useState<string>("");
   const [sites, setSites] = useState<SiteData[]>([]);
@@ -62,49 +82,68 @@ export default function Dashboard() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadData = useCallback(async (host: string) => {
-    const [agentsData, pagesData, feedData] = await Promise.all([
-      queryAnalytics<AgentData>("agents", host || undefined),
-      queryAnalytics<PageData>("pages", host || undefined),
-      queryAnalytics<FeedItem>("feed", host || undefined),
-    ]);
-    setAgents(agentsData);
-    setPages(pagesData);
-    setFeed(feedData);
-    if (host) {
-      setSites(allSites.filter((s) => s.host === host));
-    } else {
-      setSites(allSites);
-    }
-  }, [allSites]);
+  const loadData = useCallback(
+    async (host: string) => {
+      const [agentsData, pagesData, feedData] = await Promise.all([
+        queryAnalytics<AgentData>("agents", host || undefined),
+        queryAnalytics<PageData>("pages", host || undefined),
+        queryAnalytics<FeedItem>("feed", host || undefined),
+      ]);
+      setAgents(agentsData);
+      setPages(pagesData);
+      setFeed(feedData);
+      if (host) {
+        setSites(allSites.filter((s) => s.host === host));
+      } else {
+        setSites(allSites);
+      }
+    },
+    [allSites]
+  );
 
   useEffect(() => {
+    if (user === undefined || allowedHosts === undefined) return;
+    if (!user) return;
+
     async function init() {
-      const sitesData = await queryAnalytics<{ host: string; category: string; visits: string }>("sites");
+      const sitesData = await queryAnalytics<{
+        host: string;
+        category: string;
+        visits: string;
+      }>("sites");
+
       const siteMap = new Map<string, { ai: number; human: number }>();
       for (const row of sitesData) {
+        const isAllowed =
+          !allowedHosts?.length ||
+          allowedHosts.some((h) => row.host.includes(h));
+        if (!isAllowed) continue;
+
         const existing = siteMap.get(row.host) || { ai: 0, human: 0 };
         if (row.category === "coding-agent") {
           existing.ai = Number(row.visits);
         } else if (row.category === "human") {
           existing.human = Number(row.visits);
         }
-        // ignore 'bot' and 'browsing-agent' categories
         siteMap.set(row.host, existing);
       }
-      const formatted: SiteData[] = Array.from(siteMap.entries()).map(([host, data]) => ({
-        host,
-        ai_visits: data.ai,
-        human_visits: data.human,
-        ai_percentage: Math.round((data.ai / (data.ai + data.human)) * 100) || 0,
-      }));
+
+      const formatted: SiteData[] = Array.from(siteMap.entries()).map(
+        ([host, data]) => ({
+          host,
+          ai_visits: data.ai,
+          human_visits: data.human,
+          ai_percentage:
+            Math.round((data.ai / (data.ai + data.human)) * 100) || 0,
+        })
+      );
       formatted.sort((a, b) => b.ai_visits - a.ai_visits);
       setAllSites(formatted);
       setSites(formatted);
       setLoading(false);
     }
     init();
-  }, []);
+  }, [user, allowedHosts]);
 
   useEffect(() => {
     if (allSites.length === 0) return;
@@ -113,10 +152,22 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [selectedHost, allSites, loadData]);
 
+  if (user === undefined) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-zinc-400">loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <SignIn />;
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-zinc-400">Loading...</div>
+        <div className="text-zinc-400">loading analytics...</div>
       </div>
     );
   }
@@ -128,19 +179,37 @@ export default function Dashboard() {
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">AI Docs Analytics</h1>
-        <select
-          value={selectedHost}
-          onChange={(e) => setSelectedHost(e.target.value)}
-          className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">All Sites</option>
-          {allSites.map((s) => (
-            <option key={s.host} value={s.host}>
-              {s.host}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-4">
+          <select
+            value={selectedHost}
+            onChange={(e) => setSelectedHost(e.target.value)}
+            className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All Sites</option>
+            {allSites.map((s) => (
+              <option key={s.host} value={s.host}>
+                {s.host}
+              </option>
+            ))}
+          </select>
+          <div className="flex items-center gap-2 text-sm text-zinc-400">
+            <span>{user.email}</span>
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className="text-zinc-500 hover:text-zinc-300"
+            >
+              sign out
+            </button>
+          </div>
+        </div>
       </div>
+
+      {allowedHosts && allowedHosts.length > 0 && (
+        <div className="mb-4 text-sm text-zinc-500">
+          showing data for: {allowedHosts.join(", ")}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="bg-zinc-900 rounded-lg p-6">
@@ -212,9 +281,7 @@ export default function Dashboard() {
                 key={`${p.host}${p.path}`}
                 className="flex justify-between items-center py-2 border-b border-zinc-800"
               >
-                <span className="text-zinc-300 truncate max-w-xs">
-                  {p.path}
-                </span>
+                <span className="text-zinc-300 truncate max-w-xs">{p.path}</span>
                 <span className="text-blue-500 font-mono">{p.visits}</span>
               </div>
             ))}
