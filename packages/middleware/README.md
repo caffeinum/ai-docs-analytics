@@ -29,6 +29,50 @@ Or wrap existing middleware:
 export default withAIAnalytics(yourMiddleware);
 ```
 
+## Vercel (any framework)
+
+Works with Remix, SvelteKit, Astro, Nuxt, or any Vercel deployment:
+
+```ts
+// middleware.ts
+import { withAIAnalytics } from "2027-track/vercel";
+
+export default withAIAnalytics();
+
+export const config = {
+  matcher: "/((?!_next|api|favicon.ico|assets|.*\\..*).*)",
+};
+```
+
+Or wrap existing middleware:
+
+```ts
+export default withAIAnalytics(yourMiddleware);
+```
+
+Or use `trackVisit` directly:
+
+```ts
+import { trackVisit } from "2027-track";
+
+export const config = {
+  matcher: "/((?!_next|api|favicon.ico|assets|.*\\..*).*)",
+};
+
+export default function middleware(request: Request, context: { waitUntil: (promise: Promise<unknown>) => void }) {
+  const url = new URL(request.url);
+  context.waitUntil(
+    trackVisit({
+      host: url.hostname,
+      path: url.pathname,
+      userAgent: request.headers.get("user-agent") || "",
+      accept: request.headers.get("accept") || "",
+      country: request.headers.get("x-vercel-ip-country") || undefined,
+    }).catch(() => {})
+  );
+}
+```
+
 ## Generic Usage
 
 ```ts
