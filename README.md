@@ -17,6 +17,10 @@
   <a href="https://github.com/team2027/track/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
 </p>
 
+<p align="center">
+  <img src="dashboard-screenshot.png" alt="2027 Track Dashboard" width="700" />
+</p>
+
 ---
 
 ## Quick Start
