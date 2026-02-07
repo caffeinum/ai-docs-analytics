@@ -4,9 +4,9 @@
   "description": "Track AI coding agents visiting your documentation",
   "repository": {
     "type": "git",
-    "url": "https://github.com/caffeinum/ai-docs-analytics"
+    "url": "https://github.com/team2027/track"
   },
-  "homepage": "https://github.com/caffeinum/ai-docs-analytics#readme",
+  "homepage": "https://github.com/team2027/track#readme",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
