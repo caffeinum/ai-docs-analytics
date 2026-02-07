@@ -36,6 +36,19 @@ export const config = {
 };
 ```
 
+Works with any Vercel deployment too (Remix, SvelteKit, Astro, Nuxt):
+
+```ts
+// middleware.ts (Vercel)
+import { withAIAnalytics } from "2027-track/vercel";
+
+export default withAIAnalytics();
+
+export const config = {
+  matcher: "/((?!_next|api|favicon.ico|assets|.*\\..*).*)",
+};
+```
+
 That's it. AI agent visits are now tracked.
 
 ## How It Works
@@ -120,8 +133,9 @@ track/
 ├── packages/middleware/  # npm package (2027-track)
 │   └── src/
 │       ├── index.ts      # Core tracking
-│       └── next.ts       # Next.js wrapper
-└── dashboard/            # Analytics UI (coming soon)
+│       ├── next.ts       # Next.js wrapper
+│       └── vercel.ts     # Vercel edge middleware wrapper
+└── dashboard/            # Analytics UI
 ```
 
 ## License
