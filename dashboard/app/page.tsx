@@ -206,6 +206,7 @@ export default function Dashboard() {
   const aiPct_24h = totalAI_24h + totalHuman_24h > 0
     ? Math.round((totalAI_24h / (totalAI_24h + totalHuman_24h)) * 100)
     : 0;
+  const has7dData = totalAI_7d !== totalAI_24h || totalHuman_7d !== totalHuman_24h;
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -283,19 +284,19 @@ export default function Dashboard() {
         <div className="card-2027 rounded-lg p-6">
           <div className="label-style mb-2">AI Visits · 7d</div>
           <div className="text-4xl font-medium" style={{ color: 'var(--cream)' }}>
-            {totalAI_7d.toLocaleString()}
+            {has7dData ? totalAI_7d.toLocaleString() : "n/a"}
           </div>
         </div>
         <div className="card-2027 rounded-lg p-6">
           <div className="label-style mb-2">Human Visits · 7d</div>
           <div className="text-4xl font-medium" style={{ color: 'var(--cream-dim)' }}>
-            {totalHuman_7d.toLocaleString()}
+            {has7dData ? totalHuman_7d.toLocaleString() : "n/a"}
           </div>
         </div>
         <div className="card-2027 rounded-lg p-6">
           <div className="label-style mb-2">AI % · 7d</div>
           <div className="text-4xl font-medium" style={{ color: 'var(--cream)' }}>
-            {aiPct_7d}%
+            {has7dData ? `${aiPct_7d}%` : "n/a"}
           </div>
         </div>
       </div>
