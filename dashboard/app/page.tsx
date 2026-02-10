@@ -16,32 +16,43 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { z } from "zod";
+
+const SiteRowSchema = z.object({
+  host: z.string(),
+  category: z.string(),
+  visits: z.coerce.number(),
+});
+
+const AgentSchema = z.object({
+  agent: z.string(),
+  visits: z.coerce.number(),
+});
+
+const PageSchema = z.object({
+  host: z.string(),
+  path: z.string(),
+  agent: z.string(),
+  visits: z.coerce.number(),
+});
+
+const FeedItemSchema = z.object({
+  timestamp: z.string(),
+  host: z.string(),
+  path: z.string(),
+  category: z.string(),
+  agent: z.string(),
+});
+
+type AgentData = z.infer<typeof AgentSchema>;
+type PageData = z.infer<typeof PageSchema>;
+type FeedItem = z.infer<typeof FeedItemSchema>;
 
 interface SiteData {
   host: string;
   ai_visits: number;
   human_visits: number;
   ai_percentage: number;
-}
-
-interface AgentData {
-  agent: string;
-  visits: number;
-}
-
-interface PageData {
-  host: string;
-  path: string;
-  agent: string;
-  visits: number;
-}
-
-interface FeedItem {
-  timestamp: string;
-  host: string;
-  path: string;
-  category: string;
-  agent: string;
 }
 
 const COLORS = [
@@ -118,9 +129,9 @@ export default function Dashboard() {
         queryAnalytics({ queryName: "feed", host: apiHost }),
       ]);
 
-      const agentsData = (agentsResult?.data ?? []) as AgentData[];
-      let pagesData = (pagesResult?.data ?? []) as PageData[];
-      let feedData = (feedResult?.data ?? []) as FeedItem[];
+      const agentsData = z.array(AgentSchema).parse(agentsResult?.data ?? []);
+      let pagesData = z.array(PageSchema).parse(pagesResult?.data ?? []);
+      let feedData = z.array(FeedItemSchema).parse(feedResult?.data ?? []);
 
       if (rootDomain) {
         if (!isSingleHost) {
@@ -155,21 +166,23 @@ export default function Dashboard() {
     if (user === undefined || allowedHosts === undefined) return;
 
     function parseSites(
-      rawData: { host: string; category: string; visits: string }[],
+      rawData: unknown[],
       admin: boolean,
       hosts: string[] | undefined,
     ): SiteData[] {
+      const rows = z.array(SiteRowSchema).parse(rawData);
       const siteMap = new Map<string, { ai: number; human: number }>();
-      for (const row of rawData) {
+
+      for (const row of rows) {
         const isAllowed =
           admin || !hosts?.length || hosts.some((h) => row.host.includes(h));
         if (!isAllowed) continue;
 
         const existing = siteMap.get(row.host) || { ai: 0, human: 0 };
         if (row.category === "coding-agent") {
-          existing.ai = Number(row.visits);
+          existing.ai = row.visits;
         } else if (row.category === "human") {
-          existing.human = Number(row.visits);
+          existing.human = row.visits;
         }
         siteMap.set(row.host, existing);
       }
@@ -193,16 +206,15 @@ export default function Dashboard() {
         queryAnalytics({ queryName: "sites-24h" }),
       ]);
 
-      type SiteRow = { host: string; category: string; visits: string };
       const isAdmin = user?.isAdmin ?? false;
 
       const formatted7d = parseSites(
-        (sitesResult?.data ?? []) as SiteRow[],
+        sitesResult?.data ?? [],
         isAdmin,
         allowedHosts,
       );
       const formatted24h = parseSites(
-        (sites24hResult?.data ?? []) as SiteRow[],
+        sites24hResult?.data ?? [],
         isAdmin,
         allowedHosts,
       );
@@ -373,6 +385,7 @@ export default function Dashboard() {
                   borderRadius: '8px',
                   color: '#f5f0e8'
                 }}
+                itemStyle={{ color: '#f5f0e8' }}
                 labelStyle={{ color: '#f5f0e8' }}
               />
               <Bar dataKey="ai_visits" fill="#f5f0e8" name="AI" radius={[4, 4, 0, 0]} />
@@ -408,6 +421,8 @@ export default function Dashboard() {
                   borderRadius: '8px',
                   color: '#f5f0e8'
                 }}
+                itemStyle={{ color: '#f5f0e8' }}
+                labelStyle={{ color: '#f5f0e8' }}
               />
             </PieChart>
           </ResponsiveContainer>
